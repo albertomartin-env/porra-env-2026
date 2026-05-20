@@ -19,16 +19,86 @@ function roundGroup(round) {
 
 const ROUND_ORDER = [
   'Fase de Grupos', 'Ronda de 32', 'Octavos de Final',
-  'Cuartos de Final', 'Semifinales', '3er Puesto', 'Final', 'Otros'
+  'Cuartos de Final', 'Semifinales', '3er Puesto', 'Final', 'Otros',
 ]
+
+const FINISHED = ['FT', 'AET', 'PEN']
+
+function phaseStats(matches) {
+  const total = matches.length
+  const done = matches.filter(m => FINISHED.includes(m.status)).length
+  const live = matches.filter(m => ['1H', 'HT', '2H', 'ET', 'BT', 'P'].includes(m.status)).length
+  return { total, done, live, allDone: total > 0 && done === total }
+}
+
+function PhaseBadge({ stats }) {
+  if (stats.live > 0) return (
+    <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-red-100 text-red-600 animate-pulse">
+      EN VIVO
+    </span>
+  )
+  if (stats.allDone) return (
+    <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-400">
+      Completada
+    </span>
+  )
+  if (stats.done > 0) return (
+    <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-600">
+      {stats.done}/{stats.total} jugados
+    </span>
+  )
+  return (
+    <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
+      Próxima
+    </span>
+  )
+}
+
+function PhaseSection({ name, matches, predictions, onPredict, isLoggedIn, defaultOpen }) {
+  const [open, setOpen] = useState(defaultOpen)
+  const stats = phaseStats(matches)
+
+  return (
+    <div className="mb-4 bg-white rounded-xl border border-slate-200 overflow-hidden">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-5 py-4 hover:bg-slate-50 transition-colors"
+      >
+        <div className="flex items-center gap-3">
+          <span className="font-semibold text-slate-800">{name}</span>
+          <PhaseBadge stats={stats} />
+          <span className="text-xs text-slate-400">{matches.length} partidos</span>
+        </div>
+        <svg
+          className={`w-5 h-5 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`}
+          fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {open && (
+        <div className="px-4 pb-4 space-y-3 border-t border-slate-100 pt-3">
+          {matches.map(match => (
+            <MatchCard
+              key={match.id}
+              match={match}
+              prediction={predictions[match.id]}
+              onPredict={onPredict}
+              isLoggedIn={isLoggedIn}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 export default function Matches() {
   const { user } = useAuth()
   const [matches, setMatches] = useState([])
   const [predictions, setPredictions] = useState({})
   const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState('all')
-  const [rounds, setRounds] = useState([])
 
   useEffect(() => { loadData() }, [user])
 
@@ -36,14 +106,6 @@ export default function Matches() {
     setLoading(true)
     const { data: matchData } = await supabase.from('matches').select('*').order('match_date')
     setMatches(matchData || [])
-
-    const seen = new Set()
-    const uniqueRounds = []
-    for (const m of matchData || []) {
-      const rg = roundGroup(m.round)
-      if (!seen.has(rg)) { seen.add(rg); uniqueRounds.push(rg) }
-    }
-    setRounds(uniqueRounds.sort((a, b) => ROUND_ORDER.indexOf(a) - ROUND_ORDER.indexOf(b)))
 
     if (user && matchData?.length) {
       const ids = matchData.map(m => m.id)
@@ -68,10 +130,8 @@ export default function Matches() {
     if (!error && data) setPredictions(prev => ({ ...prev, [matchId]: data }))
   }
 
-  const filtered = filter === 'all' ? matches : matches.filter(m => roundGroup(m.round) === filter)
-
   const grouped = {}
-  for (const m of filtered) {
+  for (const m of matches) {
     const rg = roundGroup(m.round)
     if (!grouped[rg]) grouped[rg] = []
     grouped[rg].push(m)
@@ -81,30 +141,14 @@ export default function Matches() {
     (a, b) => ROUND_ORDER.indexOf(a) - ROUND_ORDER.indexOf(b)
   )
 
+  // La primera fase no completada es la "activa" — se abre por defecto
+  const activePhase = sortedGroups.find(g => !phaseStats(grouped[g]).allDone) ?? sortedGroups[0]
+
   if (loading) return <LoadingSpinner />
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-8">
       <h1 className="text-2xl font-bold text-slate-900 mb-6">Todos los partidos</h1>
-
-      {/* Filter pills */}
-      {rounds.length > 1 && (
-        <div className="flex flex-wrap gap-2 mb-8">
-          {['all', ...rounds].map(r => (
-            <button
-              key={r}
-              onClick={() => setFilter(r)}
-              className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                filter === r
-                  ? 'bg-emerald-600 text-white'
-                  : 'bg-white border border-slate-300 text-slate-600 hover:bg-slate-50'
-              }`}
-            >
-              {r === 'all' ? 'Todos' : r}
-            </button>
-          ))}
-        </div>
-      )}
 
       {matches.length === 0 ? (
         <div className="text-center py-16 text-slate-400">
@@ -112,24 +156,16 @@ export default function Matches() {
           <p>No hay partidos disponibles todavía</p>
         </div>
       ) : (
-        sortedGroups.map(roundName => (
-          <div key={roundName} className="mb-8">
-            <h2 className="text-base font-semibold text-slate-600 mb-3 pb-2 border-b border-slate-200 flex items-center gap-2">
-              {roundName}
-              <span className="text-xs font-normal text-slate-400">({grouped[roundName].length} partidos)</span>
-            </h2>
-            <div className="space-y-3">
-              {grouped[roundName].map(match => (
-                <MatchCard
-                  key={match.id}
-                  match={match}
-                  prediction={predictions[match.id]}
-                  onPredict={handlePredict}
-                  isLoggedIn={!!user}
-                />
-              ))}
-            </div>
-          </div>
+        sortedGroups.map(name => (
+          <PhaseSection
+            key={name}
+            name={name}
+            matches={grouped[name]}
+            predictions={predictions}
+            onPredict={handlePredict}
+            isLoggedIn={!!user}
+            defaultOpen={name === activePhase}
+          />
         ))
       )}
     </div>
