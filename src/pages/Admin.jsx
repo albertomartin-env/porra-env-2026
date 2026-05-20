@@ -30,8 +30,10 @@ export default function Admin() {
   const [loadingUsers, setLoadingUsers] = useState(true)
   const [syncMsg, setSyncMsg] = useState('')
   const [updateMsg, setUpdateMsg] = useState('')
+  const [seedMsg, setSeedMsg] = useState('')
   const [syncing, setSyncing] = useState(false)
   const [updating, setUpdating] = useState(false)
+  const [seeding, setSeeding] = useState(false)
 
   useEffect(() => { loadUsers() }, [])
 
@@ -76,9 +78,18 @@ export default function Admin() {
 
       <div className="grid sm:grid-cols-2 gap-5 mb-8">
         <ActionCard
-          title="Sincronizar partidos"
-          description="Descarga los 104 partidos del Mundial 2026 desde API-Football y los guarda en la base de datos."
-          buttonLabel="↓ Sincronizar partidos"
+          title="Cargar fase de grupos"
+          description="Inserta los 72 partidos de la fase de grupos del Mundial 2026 con fechas y equipos ya conocidos. Idempotente: se puede ejecutar varias veces sin duplicar."
+          buttonLabel="⚽ Cargar partidos"
+          buttonClass="bg-violet-600 hover:bg-violet-700"
+          onClick={() => callFunction('seed-matches', setSeedMsg, setSeeding)}
+          loading={seeding}
+          message={seedMsg}
+        />
+        <ActionCard
+          title="Sincronizar desde API"
+          description="Descarga los 104 partidos del Mundial 2026 desde API-Football y actualiza la base de datos (requiere que la API tenga datos de 2026)."
+          buttonLabel="↓ Sincronizar API"
           buttonClass="bg-blue-600 hover:bg-blue-700"
           onClick={() => callFunction('sync-matches', setSyncMsg, setSyncing)}
           loading={syncing}

@@ -62,7 +62,7 @@ export default function Home() {
       {/* Hero */}
       <div className="bg-gradient-to-r from-slate-900 to-emerald-900 text-white rounded-2xl p-6 mb-8">
         <h1 className="text-2xl font-bold mb-1">⚽ Porra Mundial 2026</h1>
-        <p className="text-slate-300 text-sm">Predice los resultados y compite con tus compañeros de ENVALORA</p>
+        <p className="text-slate-300 text-sm">Predice los resultados y compite con tus compañeros</p>
         {user && profile && (
           <div className="mt-4 flex gap-4">
             <div className="bg-white/10 rounded-lg px-4 py-2 text-center">

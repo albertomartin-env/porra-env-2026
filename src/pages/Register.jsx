@@ -45,7 +45,7 @@ export default function Register() {
         <div className="text-center mb-8">
           <div className="text-5xl mb-3">🏆</div>
           <h1 className="text-2xl font-bold text-slate-900">Únete a la porra</h1>
-          <p className="text-slate-500 mt-1 text-sm">Mundial 2026 · ENVALORA</p>
+          <p className="text-slate-500 mt-1 text-sm">Mundial 2026</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
