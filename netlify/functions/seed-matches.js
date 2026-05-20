@@ -113,26 +113,32 @@ export const handler = async (event) => {
   const token = (event.headers.authorization || '').replace('Bearer ', '')
   if (!token) return { statusCode: 401, body: JSON.stringify({ error: 'No autorizado' }) }
 
+  if (!SUPABASE_URL) {
+    return { statusCode: 500, body: JSON.stringify({ error: 'VITE_SUPABASE_URL no configurada en Netlify' }) }
+  }
   if (!SUPABASE_SERVICE_KEY || SUPABASE_SERVICE_KEY === 'PENDIENTE_ver_instrucciones') {
     return { statusCode: 500, body: JSON.stringify({ error: 'SUPABASE_SERVICE_ROLE_KEY no configurada en Netlify' }) }
   }
 
-  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, { auth: { persistSession: false } })
+  try {
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, { auth: { persistSession: false } })
 
-  const { data: { user }, error: authErr } = await supabase.auth.getUser(token)
-  if (authErr || !user) return { statusCode: 401, body: JSON.stringify({ error: 'Token inválido' }) }
+    const { data: { user }, error: authErr } = await supabase.auth.getUser(token)
+    if (authErr || !user) return { statusCode: 401, body: JSON.stringify({ error: 'Token inválido' }) }
 
-  const { data: prof } = await supabase.from('profiles').select('is_admin').eq('id', user.id).single()
-  if (!prof?.is_admin) return { statusCode: 403, body: JSON.stringify({ error: 'Solo administradores' }) }
+    const { data: prof } = await supabase.from('profiles').select('is_admin').eq('id', user.id).single()
+    if (!prof?.is_admin) return { statusCode: 403, body: JSON.stringify({ error: 'Solo administradores' }) }
 
-  // Borra partidos sin api_id (seeds anteriores) para evitar duplicados
-  await supabase.from('matches').delete().is('api_id', null)
+    await supabase.from('matches').delete().is('api_id', null)
 
-  const { error } = await supabase.from('matches').insert(MATCHES)
-  if (error) return { statusCode: 500, body: JSON.stringify({ error: error.message }) }
+    const { error } = await supabase.from('matches').insert(MATCHES)
+    if (error) return { statusCode: 500, body: JSON.stringify({ error: error.message }) }
 
-  return {
-    statusCode: 200,
-    body: JSON.stringify({ message: `${MATCHES.length} partidos de fase de grupos cargados correctamente` }),
+    return {
+      statusCode: 200,
+      body: JSON.stringify({ message: `${MATCHES.length} partidos de fase de grupos cargados correctamente` }),
+    }
+  } catch (err) {
+    return { statusCode: 500, body: JSON.stringify({ error: err.message }) }
   }
 }

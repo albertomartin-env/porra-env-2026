@@ -35,6 +35,9 @@ export const handler = async (event) => {
     return { statusCode: 401, body: JSON.stringify({ error: 'No autorizado' }) }
   }
 
+  if (!SUPABASE_URL) {
+    return { statusCode: 500, body: JSON.stringify({ error: 'VITE_SUPABASE_URL no configurada en Netlify' }) }
+  }
   if (!SUPABASE_SERVICE_KEY || SUPABASE_SERVICE_KEY === 'PENDIENTE_ver_instrucciones') {
     return {
       statusCode: 500,
