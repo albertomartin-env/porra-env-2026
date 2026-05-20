@@ -24,13 +24,13 @@ function TeamName({ name, flag, align = 'left' }) {
   )
 }
 
-export default function MatchCard({ match, prediction, onPredict, isLoggedIn }) {
+export default function MatchCard({ match, prediction, onPredict, isLoggedIn, canPredict: canPredictProp }) {
   const isFinished = FINISHED.includes(match.status)
   const isLive = LIVE.includes(match.status)
   const canPredict =
     match.status === 'NS' &&
     new Date(match.match_date) > new Date() &&
-    isLoggedIn
+    (canPredictProp ?? isLoggedIn)
 
   const isCorrect = prediction && isFinished && prediction.points === 3
   const isWrong = prediction && isFinished && prediction.points === 0

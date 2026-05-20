@@ -35,7 +35,35 @@ export default function Admin() {
   const [updating, setUpdating] = useState(false)
   const [seeding, setSeeding] = useState(false)
 
-  useEffect(() => { loadUsers() }, [])
+  const [bizumPhone, setBizumPhone] = useState('')
+  const [bizumAmount, setBizumAmount] = useState('')
+  const [savingSettings, setSavingSettings] = useState(false)
+  const [settingsMsg, setSettingsMsg] = useState('')
+
+  useEffect(() => {
+    loadUsers()
+    loadSettingsForm()
+  }, [])
+
+  async function loadSettingsForm() {
+    const { data } = await supabase.from('app_settings').select('*')
+    const map = {}
+    data?.forEach(s => { map[s.key] = s.value })
+    setBizumPhone(map.bizum_phone || '')
+    setBizumAmount(map.bizum_amount || '0')
+  }
+
+  async function saveSettings(e) {
+    e.preventDefault()
+    setSavingSettings(true)
+    setSettingsMsg('')
+    const { error } = await supabase.from('app_settings').upsert([
+      { key: 'bizum_phone', value: bizumPhone.trim() },
+      { key: 'bizum_amount', value: String(parseFloat(bizumAmount) || 0) },
+    ])
+    setSettingsMsg(error ? `✗ ${error.message}` : '✓ Configuración guardada')
+    setSavingSettings(false)
+  }
 
   async function loadUsers() {
     const { data } = await supabase
@@ -72,14 +100,64 @@ export default function Admin() {
     if (!error) setUsers(prev => prev.map(u => u.id === userId ? { ...u, is_admin: !current } : u))
   }
 
+  async function togglePaid(userId, current) {
+    const { error } = await supabase.from('profiles').update({ paid: !current }).eq('id', userId)
+    if (!error) setUsers(prev => prev.map(u => u.id === userId ? { ...u, paid: !current } : u))
+  }
+
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
       <h1 className="text-2xl font-bold text-slate-900 mb-8">Panel de administración</h1>
 
-      <div className="grid sm:grid-cols-2 gap-5 mb-8">
+      {/* Bizum settings */}
+      <div className="bg-white rounded-xl border border-slate-200 p-6 mb-8">
+        <h2 className="font-semibold text-slate-800 mb-1">Configuración de pago (Bizum)</h2>
+        <p className="text-sm text-slate-500 mb-4">
+          Si el importe es 0, el pago no es obligatorio y todos los usuarios pueden predecir.
+        </p>
+        <form onSubmit={saveSettings} className="flex flex-wrap gap-4 items-end">
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Número de teléfono</label>
+            <input
+              type="tel"
+              value={bizumPhone}
+              onChange={e => setBizumPhone(e.target.value)}
+              placeholder="600 000 000"
+              className="border border-slate-300 rounded-lg px-3 py-2 text-sm w-44 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Importe (€)</label>
+            <input
+              type="number"
+              min="0"
+              step="0.5"
+              value={bizumAmount}
+              onChange={e => setBizumAmount(e.target.value)}
+              placeholder="0"
+              className="border border-slate-300 rounded-lg px-3 py-2 text-sm w-28 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={savingSettings}
+            className="bg-slate-800 hover:bg-slate-900 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+          >
+            {savingSettings ? 'Guardando...' : 'Guardar'}
+          </button>
+          {settingsMsg && (
+            <p className={`text-sm ${settingsMsg.startsWith('✓') ? 'text-emerald-600' : 'text-red-600'}`}>
+              {settingsMsg}
+            </p>
+          )}
+        </form>
+      </div>
+
+      {/* Action buttons */}
+      <div className="grid sm:grid-cols-3 gap-5 mb-8">
         <ActionCard
           title="Cargar fase de grupos"
-          description="Inserta los 72 partidos de la fase de grupos del Mundial 2026 con fechas y equipos ya conocidos. Idempotente: se puede ejecutar varias veces sin duplicar."
+          description="Inserta los 72 partidos de la fase de grupos precargados."
           buttonLabel="⚽ Cargar partidos"
           buttonClass="bg-violet-600 hover:bg-violet-700"
           onClick={() => callFunction('seed-matches', setSeedMsg, setSeeding)}
@@ -88,7 +166,7 @@ export default function Admin() {
         />
         <ActionCard
           title="Sincronizar desde API"
-          description="Descarga los 104 partidos del Mundial 2026 desde API-Football y actualiza la base de datos (requiere que la API tenga datos de 2026)."
+          description="Descarga todos los partidos del Mundial 2026 desde API-Football."
           buttonLabel="↓ Sincronizar API"
           buttonClass="bg-blue-600 hover:bg-blue-700"
           onClick={() => callFunction('sync-matches', setSyncMsg, setSyncing)}
@@ -97,7 +175,7 @@ export default function Admin() {
         />
         <ActionCard
           title="Actualizar resultados"
-          description="Obtiene los marcadores de partidos terminados y calcula automáticamente los puntos de cada usuario."
+          description="Obtiene marcadores de partidos terminados y puntúa predicciones."
           buttonLabel="↻ Actualizar resultados"
           buttonClass="bg-emerald-600 hover:bg-emerald-700"
           onClick={() => callFunction('update-results', setUpdateMsg, setUpdating)}
@@ -107,9 +185,10 @@ export default function Admin() {
       </div>
 
       {/* Stats summary */}
-      <div className="grid grid-cols-3 gap-4 mb-8">
+      <div className="grid grid-cols-4 gap-4 mb-8">
         {[
           { label: 'Usuarios', value: users.length },
+          { label: 'Pagados', value: users.filter(u => u.paid).length },
           { label: 'Total predicciones', value: users.reduce((s, u) => s + (u.predictions_count || 0), 0) },
           { label: 'Total aciertos', value: users.reduce((s, u) => s + (u.correct_predictions || 0), 0) },
         ].map(s => (
@@ -134,6 +213,7 @@ export default function Admin() {
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase">
                   <th className="px-4 py-3 text-left">Usuario</th>
+                  <th className="px-4 py-3 text-center">Pagado</th>
                   <th className="px-4 py-3 text-right">Pred.</th>
                   <th className="px-4 py-3 text-right">Aciertos</th>
                   <th className="px-4 py-3 text-right">Puntos</th>
@@ -148,6 +228,18 @@ export default function Admin() {
                       {u.id === profile?.id && (
                         <span className="ml-1.5 text-xs text-slate-400">(tú)</span>
                       )}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <button
+                        onClick={() => togglePaid(u.id, u.paid)}
+                        className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                          u.paid
+                            ? 'bg-emerald-100 text-emerald-700 hover:bg-red-100 hover:text-red-700'
+                            : 'bg-red-100 text-red-600 hover:bg-emerald-100 hover:text-emerald-700'
+                        }`}
+                      >
+                        {u.paid ? '✓ Pagado' : '✗ Pendiente'}
+                      </button>
                     </td>
                     <td className="px-4 py-3 text-right text-sm text-slate-500">
                       {u.predictions_count ?? 0}

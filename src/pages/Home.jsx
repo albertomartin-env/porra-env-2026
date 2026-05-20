@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { loadSettings } from '../lib/settings'
 import { useAuth } from '../context/AuthContext'
 import MatchCard from '../components/MatchCard'
 import LoadingSpinner from '../components/LoadingSpinner'
@@ -9,29 +10,26 @@ export default function Home() {
   const { user, profile } = useAuth()
   const [matches, setMatches] = useState([])
   const [predictions, setPredictions] = useState({})
+  const [settings, setSettings] = useState({ bizumPhone: '', bizumAmount: 0 })
   const [loading, setLoading] = useState(true)
 
   useEffect(() => { loadData() }, [user])
 
   async function loadData() {
     setLoading(true)
-    const { data: matchData } = await supabase
-      .from('matches')
-      .select('*')
-      .eq('status', 'NS')
-      .gt('match_date', new Date().toISOString())
-      .order('match_date')
-      .limit(12)
+    const [{ data: matchData }, cfg] = await Promise.all([
+      supabase.from('matches').select('*').eq('status', 'NS')
+        .gt('match_date', new Date().toISOString()).order('match_date').limit(12),
+      loadSettings(),
+    ])
 
     setMatches(matchData || [])
+    setSettings(cfg)
 
     if (user && matchData?.length) {
       const ids = matchData.map(m => m.id)
       const { data: predData } = await supabase
-        .from('predictions')
-        .select('*')
-        .eq('user_id', user.id)
-        .in('match_id', ids)
+        .from('predictions').select('*').eq('user_id', user.id).in('match_id', ids)
       const map = {}
       predData?.forEach(p => { map[p.match_id] = p })
       setPredictions(map)
@@ -47,12 +45,15 @@ export default function Home() {
         { user_id: user.id, match_id: matchId, prediction, updated_at: new Date().toISOString() },
         { onConflict: 'user_id,match_id' }
       )
-      .select()
-      .single()
+      .select().single()
     if (!error && data) setPredictions(prev => ({ ...prev, [matchId]: data }))
   }
 
   if (loading) return <LoadingSpinner />
+
+  const paymentRequired = settings.bizumAmount > 0
+  const hasPaid = !!profile?.paid
+  const canPredict = !!user && (!paymentRequired || hasPaid)
 
   const pending = matches.filter(m => !predictions[m.id])
   const done = matches.filter(m => predictions[m.id])
@@ -96,15 +97,34 @@ export default function Home() {
         </div>
       )}
 
+      {/* Bizum payment required banner */}
+      {user && paymentRequired && !hasPaid && (
+        <div className="bg-amber-50 border border-amber-300 rounded-xl p-5 mb-8">
+          <div className="flex items-start gap-3">
+            <span className="text-2xl">💸</span>
+            <div>
+              <p className="font-semibold text-amber-800 mb-1">Pago pendiente para participar</p>
+              <p className="text-sm text-amber-700 mb-3">
+                Para hacer predicciones, realiza un Bizum de{' '}
+                <strong>{settings.bizumAmount}€</strong> al número{' '}
+                <strong className="font-mono text-lg">{settings.bizumPhone}</strong>
+                {' '}con tu nombre de usuario como concepto.
+              </p>
+              <p className="text-xs text-amber-600">
+                El administrador activará tu acceso una vez confirmado el pago.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {matches.length === 0 ? (
         <div className="text-center py-16 text-slate-400">
           <div className="text-5xl mb-4">⚽</div>
           <p className="font-medium">No hay partidos disponibles aún</p>
-          <p className="text-sm mt-1">El admin debe sincronizar los partidos desde el panel</p>
         </div>
       ) : (
         <>
-          {/* Pending predictions */}
           {user && pending.length > 0 && (
             <div className="mb-8">
               <div className="flex items-center justify-between mb-4">
@@ -123,13 +143,13 @@ export default function Home() {
                     prediction={null}
                     onPredict={handlePredict}
                     isLoggedIn={true}
+                    canPredict={canPredict}
                   />
                 ))}
               </div>
             </div>
           )}
 
-          {/* Already predicted */}
           {user && done.length > 0 && (
             <div className="mb-8">
               <h2 className="text-lg font-semibold text-slate-800 mb-4">Ya has predicho</h2>
@@ -141,13 +161,13 @@ export default function Home() {
                     prediction={predictions[match.id]}
                     onPredict={handlePredict}
                     isLoggedIn={true}
+                    canPredict={canPredict}
                   />
                 ))}
               </div>
             </div>
           )}
 
-          {/* Not logged in: show all */}
           {!user && (
             <div className="space-y-3">
               {matches.map(match => (
@@ -157,6 +177,7 @@ export default function Home() {
                   prediction={null}
                   onPredict={handlePredict}
                   isLoggedIn={false}
+                  canPredict={false}
                 />
               ))}
             </div>

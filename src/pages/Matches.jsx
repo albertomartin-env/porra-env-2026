@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import { loadSettings } from '../lib/settings'
 import { useAuth } from '../context/AuthContext'
 import MatchCard from '../components/MatchCard'
 import LoadingSpinner from '../components/LoadingSpinner'
@@ -54,7 +55,7 @@ function PhaseBadge({ stats }) {
   )
 }
 
-function PhaseSection({ name, matches, predictions, onPredict, isLoggedIn, defaultOpen }) {
+function PhaseSection({ name, matches, predictions, onPredict, isLoggedIn, canPredict, defaultOpen }) {
   const [open, setOpen] = useState(defaultOpen)
   const stats = phaseStats(matches)
 
@@ -86,6 +87,7 @@ function PhaseSection({ name, matches, predictions, onPredict, isLoggedIn, defau
               prediction={predictions[match.id]}
               onPredict={onPredict}
               isLoggedIn={isLoggedIn}
+              canPredict={canPredict}
             />
           ))}
         </div>
@@ -95,17 +97,22 @@ function PhaseSection({ name, matches, predictions, onPredict, isLoggedIn, defau
 }
 
 export default function Matches() {
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
   const [matches, setMatches] = useState([])
   const [predictions, setPredictions] = useState({})
+  const [settings, setSettings] = useState({ bizumPhone: '', bizumAmount: 0 })
   const [loading, setLoading] = useState(true)
 
   useEffect(() => { loadData() }, [user])
 
   async function loadData() {
     setLoading(true)
-    const { data: matchData } = await supabase.from('matches').select('*').order('match_date')
+    const [{ data: matchData }, cfg] = await Promise.all([
+      supabase.from('matches').select('*').order('match_date'),
+      loadSettings(),
+    ])
     setMatches(matchData || [])
+    setSettings(cfg)
 
     if (user && matchData?.length) {
       const ids = matchData.map(m => m.id)
@@ -141,8 +148,9 @@ export default function Matches() {
     (a, b) => ROUND_ORDER.indexOf(a) - ROUND_ORDER.indexOf(b)
   )
 
-  // La primera fase no completada es la "activa" — se abre por defecto
   const activePhase = sortedGroups.find(g => !phaseStats(grouped[g]).allDone) ?? sortedGroups[0]
+  const paymentRequired = settings.bizumAmount > 0
+  const canPredict = !!user && (!paymentRequired || !!profile?.paid)
 
   if (loading) return <LoadingSpinner />
 
@@ -164,6 +172,7 @@ export default function Matches() {
             predictions={predictions}
             onPredict={handlePredict}
             isLoggedIn={!!user}
+            canPredict={canPredict}
             defaultOpen={name === activePhase}
           />
         ))
